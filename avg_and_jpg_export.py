@@ -244,10 +244,13 @@ class Unzipper:
 
 class PicAndUnempMatcher:
 
-    def __init__(self, picsDirec, unempData, MSAName):
-        self.picsDirec = picsDirec
+    def __init__(self, picsDir, unempData, MSAName, timePeriod):
+        self.picsDir = picsDir
         self.unempData = unempData
         self.MSAName = MSAName
+        self.timePeriod = timePeriod
+        #Specific to W&M HPC
+        self.rootDir = "scr10/" + MSAName
 
     #Match picture with unemployment datum in Excel sheet
     def match(self):
@@ -255,28 +258,57 @@ class PicAndUnempMatcher:
         sheet = wb.active()
         #Iterate through each row, looking for our MSA
         for i in range(1, sheet.max_row + 1):
+            #NOTE: Row/column values come from specific unempData format -- not general
             if(sheet.cell(row=i, column=3).value == self.MSAName):
+                pyUnemp = str(sheet.cell(row=i, column=2).value) + str(sheet.cell(row=i, column=1).value)
                 #Find picture that is same quarter as this row
-                for root, dirs, files in os.walk(self.direc):
-                    #Loop through files in specified directory
+                for root, dirs, files in os.walk(self.picsDir):
                     for fileName in files:
                         #Ensure that we only consider jpgs
                         if (fileName.endswith(".jpg")):
-                            qy = str(sheet.cell(row=i, column=2).value) + str(sheet.cell(row=i, column=1).value)
-                            #FINISH
-                            if (qy == QYASPERFILENAME)
-                            self.movePic(fileName)
+                            pyPic = self.findPicPY(fileName)
+                            #The period should never be 0. If it is, this indicates findPicPY() 
+                            #is improperly implemented or picture is improperly named
+                            if (pyPic == 0):
+                                print("Picture " + fileName + " is either indexed or named incorrectly.")
+                            #If a period-year data match is found, move to correct directory
+                            if (pyUnemp == pyPic):
+                                self.movePic(fileName, str(sheet.cell(row=i, column=4).value))
                 #If the next row isn't for our MSA, stop the loop
                 if (sheet.cell(row=i+1, column=4).value != self.MSAName):
                     break
     
     #Move picture to folder whose name is the *1/4-rounded* unemployment
-    def movePic(self):
+    def movePic(self, fileName, unempRate):
+        subDir = self.rootDir + "/" + unempRate
+        existingSubDirs = os.listdir(self.rootDir)
+
+        if unempRate not in existingSubDirs:
+            os.mkdir(subDir)
+
+        os.rename(self.picsDir + "/" + fileName, subDir + "/" + fileName)
+
+    def findPicPY(self, fileName):
+        month = int(fileName[19] + fileName[20])
+        period = 0
+        if (month <= self.timePeriod):
+            period = 1
+        elif (month <= 2*self.timePeriod):
+            period = 2
+        elif (month <= 3*self.timePeriod):
+            period = 3
+        elif (month <= 4*self.timePeriod):
+            period = 4
+
+        year = fileName[15] + fileName[16] + fileName[17] + fileName[18]
+
+        return str(period) + year
 
 
 
 if __name__ == '__main__':
     MSAName = "Baltimore-Columbia-Towson, MD MSA"
+    #Specific to W&M HPC
     direc = "scr10/" + MSAName + "/Bulk Order 976698/U.S. Landsat 4-8 ARD"
     unzipper = Unzipper(direc)
     unzipper.unzipFiles()
@@ -291,5 +323,6 @@ if __name__ == '__main__':
     avgr.average()
 
     unempData = "scr10/quart_data.xlsx"
-    matcher = PicAndUnempMatcher(direc, unempData, MSAName)
+    #Match quarterly
+    matcher = PicAndUnempMatcher(direc, unempData, MSAName, 3)
     matcher.match()
