@@ -153,9 +153,7 @@ class jpgTimeAverager:
                             #Average current pixelTotalArr
                             for i in range(len(pixelTotalArr)):
                                 for j in range(len(pixelTotalArr[i])):
-                                    #SIMPLIFYING BY ENFORCING GRAYSCALE
-                                    #for k in range(len(pixelTotalArr[i][j])):
-                                    #    pixelTotalArr[i][j][k] = pixelTotalArr[i][j][k]/float(numPicsInPeriod)
+                                    #Assume grayscale -- only two dimensions
                                     pixelTotalArr[i][j] = pixelTotalArr[i][j]/float(numPicsInPeriod)
                             #And export averaged array to a JPG
                             a = np.asarray(pixelTotalArr)
@@ -185,21 +183,17 @@ class jpgTimeAverager:
                             endOfPeriod = self.timePeriod
                             periodNum = 1
 
+                    #Make sure that image is in direc and not in a subdirectory
+                    #because the subdirectory could well be periodAvgs
+                    if (fileName not in os.listdir(self.direc)):
+                        print(fileName + " not in " + self.direc)
+                        continue
                     print(fileName)
                     im = Image.open(self.direc + "/" + fileName).convert("L")
                     width, height = im.size
 
-                    #If image has many layers, its getpixel() will return a tuple
-                    #Accounting for this is necessary in pixelTotalArr initialization
-                    #pixIsTup = False
-                    #if (type(im.getpixel((0,0))) == int):
-                    #    k_len = 1
-                    #else:
-                    #    pixIsTup = True
-                    #    k_len = len(im.getpixel((0,0)))
-                    
+                    #Initialize pixelTotalArr
                     if(len(pixelTotalArr) == 0):
-                        #Initialize pixelTotalArr
                         #COULD BE REVERSING WIDTH AND HEIGHT IN ARRAY
                         for i in range(0, height):
                             pixelTotalArr.append([])
@@ -213,12 +207,7 @@ class jpgTimeAverager:
                     #Update current period's pixelTotalArr with this jpg's values
                     for i in range(0, height):
                         for j in range(0, width):
-                            #SIMPLIFYING BY ENFORCING GRAYSCALE
-                            #for k in range(0, k_len):
-                                #if (pixIsTup):
-                                #    pixelTotalArr[i][j][k] += im.getpixel((i,j))[k]
-                                #else:
-                                #    pixelTotalArr[i][j][k] += im.getpixel((i,j))
+                            #Assume grayscale -- only two dimensions
                             pixelTotalArr[i][j] += im.getpixel((j,i))
 
 class Unzipper:
@@ -244,18 +233,18 @@ class Unzipper:
 
 class PicAndUnempMatcher:
 
-    def __init__(self, picsDir, unempData, MSAName, timePeriod):
-        self.picsDir = picsDir
+    def __init__(self, rootDir, picsDir, unempData, MSAName, timePeriod):
+        self.picsDir = picsDir + "/periodAvgs"
         self.unempData = unempData
         self.MSAName = MSAName
         self.timePeriod = timePeriod
-        #Specific to W&M HPC
-        self.rootDir = "scr10/" + MSAName
+        self.MSADir = rootDir + "/" + MSAName
 
     #Match picture with unemployment datum in Excel sheet
     def match(self):
         wb = xl.load_workbook(self.unempData)
-        sheet = wb.active()
+        sheet = wb.active
+        print("Unemployment data loaded")
         #Iterate through each row, looking for our MSA
         for i in range(1, sheet.max_row + 1):
             #NOTE: Row/column values come from specific unempData format -- not general
@@ -275,54 +264,62 @@ class PicAndUnempMatcher:
                             if (pyUnemp == pyPic):
                                 self.movePic(fileName, str(sheet.cell(row=i, column=4).value))
                 #If the next row isn't for our MSA, stop the loop
-                if (sheet.cell(row=i+1, column=4).value != self.MSAName):
+                if (sheet.cell(row=i+1, column=3).value != self.MSAName):
                     break
     
     #Move picture to folder whose name is the *1/4-rounded* unemployment
     def movePic(self, fileName, unempRate):
-        subDir = self.rootDir + "/" + unempRate
-        existingSubDirs = os.listdir(self.rootDir)
+        finalDir = self.MSADir + "/final"
+        subDir = finalDir + "/" + unempRate
 
-        if unempRate not in existingSubDirs:
+        #Ensure there is a directory to hold the final arrangement of data
+        if ("final" not in os.listdir(self.MSADir)):
+            os.mkdir(finalDir)
+
+        existingSubDirs = os.listdir(finalDir)
+
+        #Ensure there is a subdirectory for the unemployment rate corresponding to picture "fileName"
+        if (unempRate not in existingSubDirs):
             os.mkdir(subDir)
 
+        #Move image to final location
         os.rename(self.picsDir + "/" + fileName, subDir + "/" + fileName)
 
+    #Find and concatenate the period and year of the picture
+    #This entirely depends on fileName format -- see output of jpgTimeAverager
     def findPicPY(self, fileName):
-        month = int(fileName[19] + fileName[20])
-        period = 0
-        if (month <= self.timePeriod):
-            period = 1
-        elif (month <= 2*self.timePeriod):
-            period = 2
-        elif (month <= 3*self.timePeriod):
-            period = 3
-        elif (month <= 4*self.timePeriod):
-            period = 4
 
-        year = fileName[15] + fileName[16] + fileName[17] + fileName[18]
+        period = fileName[42]
+        year = fileName[44] + fileName[45] + fileName[46] + fileName[47]
 
         return str(period) + year
 
 
 
 if __name__ == '__main__':
+    #User input
     MSAName = "Baltimore-Columbia-Towson, MD MSA"
+    period = 3 #quarter
+    bulkOrderNum = "976698"
+
     #Specific to W&M HPC
-    direc = "scr10/" + MSAName + "/Bulk Order 976698/U.S. Landsat 4-8 ARD"
-    unzipper = Unzipper(direc)
+    rootDir = "scr10"
+
+    #Specific to USGS BDA download package structure
+    picsDir = rootDir + "/" + MSAName + "/Bulk Order " + bulkOrderNum + "/U.S. Landsat 4-8 ARD"
+
+    unzipper = Unzipper(picsDir)
     unzipper.unzipFiles()
     print("Unzipping finished")
     
-    processor = tifPreProcessor(direc)
+    processor = tifPreProcessor(picsDir)
     processor.executeCalculations()
     processor.qgs.exitQgis()
 
-    #Average quarterly (3 months)
-    avgr = jpgTimeAverager(direc, 3)
+    avgr = jpgTimeAverager(picsDir, period)
     avgr.average()
 
-    unempData = "scr10/quart_data.xlsx"
+    unempData = rootDir + "/quart_data.xlsx"
     #Match quarterly
-    matcher = PicAndUnempMatcher(direc, unempData, MSAName, 3)
+    matcher = PicAndUnempMatcher(rootDir, picsDir, unempData, MSAName, period)
     matcher.match()
