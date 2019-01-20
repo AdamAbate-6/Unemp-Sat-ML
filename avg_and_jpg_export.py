@@ -5,6 +5,7 @@ from osgeo import gdal
 from PIL import Image
 import numpy as np
 import tarfile
+import openpyxl as xl
 #import Image, ImageDraw
 gdal.UseExceptions()
 
@@ -241,16 +242,54 @@ class Unzipper:
                     except tarfile.ReadError:
                         os.remove(self.direc + "/" + fileName)
 
+class PicAndUnempMatcher:
+
+    def __init__(self, picsDirec, unempData, MSAName):
+        self.picsDirec = picsDirec
+        self.unempData = unempData
+        self.MSAName = MSAName
+
+    #Match picture with unemployment datum in Excel sheet
+    def match(self):
+        wb = xl.load_workbook(self.unempData)
+        sheet = wb.active()
+        #Iterate through each row, looking for our MSA
+        for i in range(1, sheet.max_row + 1):
+            if(sheet.cell(row=i, column=3).value == self.MSAName):
+                #Find picture that is same quarter as this row
+                for root, dirs, files in os.walk(self.direc):
+                    #Loop through files in specified directory
+                    for fileName in files:
+                        #Ensure that we only consider jpgs
+                        if (fileName.endswith(".jpg")):
+                            qy = str(sheet.cell(row=i, column=2).value) + str(sheet.cell(row=i, column=1).value)
+                            #FINISH
+                            if (qy == QYASPERFILENAME)
+                            self.movePic(fileName)
+                #If the next row isn't for our MSA, stop the loop
+                if (sheet.cell(row=i+1, column=4).value != self.MSAName):
+                    break
+    
+    #Move picture to folder whose name is the *1/4-rounded* unemployment
+    def movePic(self):
+
+
+
 if __name__ == '__main__':
-    direc = "scr10/Baltimore-Columbia-Towson, MD MSA/Bulk Order 976698/U.S. Landsat 4-8 ARD"
+    MSAName = "Baltimore-Columbia-Towson, MD MSA"
+    direc = "scr10/" + MSAName + "/Bulk Order 976698/U.S. Landsat 4-8 ARD"
     unzipper = Unzipper(direc)
     unzipper.unzipFiles()
     print("Unzipping finished")
     
-    #processor = tifPreProcessor(direc)
-    #processor.executeCalculations()
-    #processor.qgs.exitQgis()
+    processor = tifPreProcessor(direc)
+    processor.executeCalculations()
+    processor.qgs.exitQgis()
 
     #Average quarterly (3 months)
-    #avgr = jpgTimeAverager(direc, 3)
-    #avgr.average()
+    avgr = jpgTimeAverager(direc, 3)
+    avgr.average()
+
+    unempData = "scr10/quart_data.xlsx"
+    matcher = PicAndUnempMatcher(direc, unempData, MSAName)
+    matcher.match()
